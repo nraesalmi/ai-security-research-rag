@@ -3,9 +3,11 @@ import os
 import glob
 from pypdf import PdfReader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain_core.documents import Document
+
+os.environ["HF_TOKEN"] = os.environ.get("HF_TOKEN", "")
 
 
 def extract_text_from_pdf(pdf_path):

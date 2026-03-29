@@ -6,11 +6,13 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+os.environ["HF_TOKEN"] = os.environ.get("HF_TOKEN", "")
+
 BASE_URL = os.environ.get("OPENROUTER_BASE_URL")
 MODEL = "openai/gpt-4.1-mini"
 
 from langchain_community.vectorstores import FAISS
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 
 
 def load_vector_store(path="faiss_index"):
@@ -25,10 +27,10 @@ def retrieve_context(vector_store, query, k=5):
 
 def format_context(docs):
     context = ""
-    for i, doc in enumerate(docs):
+    for doc in docs:
         page_num = doc.metadata.get("page", "unknown")
         source = doc.metadata.get("source", "unknown")
-        context += f"[Doc {i+1}] Source: {source}, Page: {page_num}\n{doc.page_content}\n\n"
+        context += f"[Source: {source}, Page: {page_num}]\n{doc.page_content}\n\n"
     return context
 
 
@@ -82,7 +84,7 @@ METHODS_ANALYST_SYSTEM_PROMPT = """You are a Methods Analyst Agent. Your role is
 
 When answering questions:
 1. Use the provided context from the documents
-2. Cite the document name and page number for each piece of information
+2. Do NOT include any citations or references in your answer
 3. Be precise and technical in your explanations
 
 Context from documents:
@@ -95,7 +97,7 @@ RESULTS_EXTRACTOR_SYSTEM_PROMPT = """You are a Results Extractor Agent. Your rol
 
 When answering questions:
 1. Extract specific numbers and statistics from the documents
-2. Cite the document name and page number for each piece of information
+2. Do NOT include any citations or references in your answer
 3. Present results clearly with comparisons to baselines if available
 
 Context from documents:
@@ -108,7 +110,7 @@ SKEPTICAL_REVIEWER_SYSTEM_PROMPT = """You are a Skeptical Reviewer Agent. Your r
 
 When answering questions:
 1. Identify and discuss limitations mentioned in the documents
-2. Cite the document name and page number for each piece of information
+2. Do NOT include any citations or references in your answer
 3. Be critical and objective in your analysis
 
 Context from documents:
@@ -121,7 +123,7 @@ GENERAL_SYNTHESIZER_SYSTEM_PROMPT = """You are a General Synthesizer Agent. Your
 
 When answering questions:
 1. Synthesize information from multiple documents
-2. Cite the document name and page number for each piece of information
+2. Do NOT include any citations or references in your answer
 3. Provide clear, comprehensive answers
 
 Context from documents:
@@ -136,6 +138,26 @@ AGENT_PROMPTS = {
     "Skeptical Reviewer": SKEPTICAL_REVIEWER_SYSTEM_PROMPT,
     "General Synthesizer": GENERAL_SYNTHESIZER_SYSTEM_PROMPT
 }
+
+
+def get_references(docs):
+    seen = {}
+    for doc in docs:
+        source = doc.metadata.get("source", "unknown")
+        page = doc.metadata.get("page", "unknown")
+        if source not in seen:
+            seen[source] = set()
+        seen[source].add(page)
+    
+    references = []
+    for source, pages in seen.items():
+        sorted_pages = sorted(pages)
+        if len(sorted_pages) == 1:
+            references.append(f"{source}, page {sorted_pages[0]}")
+        else:
+            references.append(f"{source}, pages {', '.join(map(str, sorted_pages))}")
+    
+    return references
 
 
 def route_question(question):
@@ -156,7 +178,9 @@ def route_question(question):
         {"role": "user", "content": question}
     ])
     
-    return selected_agent_name, answer
+    references = get_references(docs)
+    
+    return selected_agent_name, answer, references
 
 
 def main():
@@ -177,9 +201,12 @@ def main():
         
         try:
             print("Processing...")
-            agent_name, answer = route_question(question)
+            agent_name, answer, references = route_question(question)
             print(f"\n{agent_name}:")
             print(answer)
+            print("\nReferences:")
+            for ref in references:
+                print(f"  - {ref}")
             print()
         except Exception as e:
             print(f"Error: {e}\n")
