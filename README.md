@@ -1,0 +1,288 @@
+# AI Security Research RAG
+
+A Retrieval-Augmented Generation system for querying AI security research papers.
+
+## Setup
+
+1. Install dependencies:
+```bash
+pip install -r requirements.txt
+```
+
+2. Configure environment:
+   - Copy `.env.example` to `.env`
+   - Add your OpenRouter proxy URL to `.env`:
+   ```
+   OPENROUTER_BASE_URL=your_proxy_url_here
+   ```
+
+## Usage
+
+### Indexing
+
+Index the PDF documents:
+```bash
+python indexer.py
+```
+
+This will:
+- Process all PDFs in the `resources/` folder
+- Extract text and chunk into segments
+- Generate embeddings using `sentence-transformers/all-mpnet-base-v2`
+- Save FAISS vector store to `faiss_index/`
+
+### Querying
+
+Run the interactive query system:
+```bash
+python query.py
+```
+
+Ask questions about the research papers. Type `quit` or `exit` to stop.
+
+## Project Structure
+
+```
+.
+├── indexer.py          # PDF indexing script
+├── query.py            # Interactive query system
+├── requirements.txt    # Python dependencies
+├── .env                # Environment variables (create from .env.example)
+├── .env.example        # Example environment configuration
+├── faiss_index/        # Vector store (created after indexing)
+└── resources/          # PDF documents
+    ├── [PDF_FILE_1]
+    ├── [PDF_FILE_2]
+    └── [PDF_FILE_3]
+```
+
+## Agents
+
+The system uses a router pattern with five agents:
+
+1. **Router Agent** - Routes questions to the appropriate specialized agent
+2. **Methods Analyst** - Answers questions about methods/setup/dataset/metrics
+3. **Results Extractor** - Answers questions about results/numbers/ablations/comparisons
+4. **Skeptical Reviewer** - Answers questions about limitations/threats/critique
+5. **General Synthesizer** - Answers other questions
+
+## Research Papers
+
+### Files
+1. 2504.10374v1.pdf
+2. 2410.07283v1.pdf
+3. 8180_MELON_Provable_Defense_Ag.pdf
+
+## Questions and Answers
+
+### Question 1
+How do resampling-based control protocols operate in multi-step agent environments, and how do they differ from trusted monitoring and deferral-based approaches?
+
+**Methods Analyst:**
+Resampling-based control protocols operate by leveraging the multi-step structure of agent tasks to enforce safety through repeated sampling of the untrusted model's proposed actions. Specifically, when an action is suspected to be unsafe, these protocols resample multiple candidate actions from the untrusted model and select the least suspicious (most benign) action to execute. This effectively forces the adversarial or "red team" attack policies to maintain a high probability of continuation for their attacks; otherwise, the attack attempts are "washed out" by resampling, which tends to produce more innocent behavior (Doc 1, p. 7).       
+
+Key operational characteristics of resampling protocols are:
+- They exploit the multi-step nature of agent tasks to break down attacks into subtle steps.
+- By resampling actions until a less suspicious one is found, they improve safety without heavily sacrificing usefulness compared to deferral to trusted policies.
+- They require drawing multiple samples from the untrusted model per trajectory, increasing computational cost (Doc 4, p. 35).
+- Their effectiveness depends on high attack continuation probabilities to successfully complete multi-step attacks, making it more challenging for attacks to go undetected (Doc 3, p. 10).
+
+In contrast, trusted monitoring and deferral-based approaches operate differently:
+- Deferral-based protocols ("Defer to Trusted" or DTR) immediately replace suspected unsafe actions with actions from a trusted policy rather than sampling alternatives from the untrusted model. This approach is simpler but tends to reduce usefulness because it defers more control to the trusted policy (Doc 2, p. 4; Doc 4, p. 35).
+- Trusted monitoring mainly observes and flags suspicious behavior but does not necessarily resample or replace actions. The monitored system can audit actions selectively, but without resampling, it may miss subtle multi-step attacks (Doc 2, p. 4).
+- Resampling protocols can also be augmented with incrimination techniques, drawing even more samples beforehand to increase safety at a given usefulness level, trading off computational cost for improved performance (Doc 4, p. 35).
+
+In summary, resampling-based protocols differ from trusted monitoring and deferral-based approaches by actively generating multiple candidate actions from the untrusted model to select the safest action to execute, leveraging multi-step task structure for control. This leads to improved control over subtle multi-step attacks and a better tradeoff between safety and usefulness, at the expense of increased sample complexity and computational cost.
+
+References:
+- Doc 1, p. 7
+- Doc 2, p. 4
+- Doc 3, p. 10
+- Doc 4, p. 35
+
+---
+
+### Question 2
+What empirical impact do resampling protocols have on attack success rates and task usefulness compared to baseline control methods?
+
+**Results Extractor:**
+The empirical impact of resampling protocols on attack success rates and task usefulness compared to baseline control methods is as follows:
+
+1. **Attack Detection and Safety Scores:**
+   - The baseline "Trusted Monitoring" method catches about **33.2%** of attacks (Doc 5, Page 6).
+   - The resampling baseline improves this substantially by catching **70.6%** of attacks, nearly doubling the detection rate compared to the trusted monitoring baseline (Doc 5, Page 6).
+   - The safety score for a basic resampling protocol is reported as **83.2% safety at 95% usefulness** (Doc 1, Page 7).
+   - Further improved resampling protocols, such as the "Defer to resample with incrimination in the present" using a three strikes auditing rule, achieve an even higher safety score of **87.1% at 95% usefulness**, which is noted as the best resampling protocol (Doc 3, Page 8).
+
+2. **Task Usefulness:**
+   - The improvements to resampling protocols do not negatively impact usefulness; usefulness remains at or near **95%** even with these stricter auditing and resampling strategies (Doc 3, Page 8).
+   - These improvements mainly enhance auditing efficiency and attack detection without sacrificing task performance.
+
+3. **Mechanism of Impact:**
+   - Resampling protocols put pressure on the attacking policy to maintain a high attack continuation probability to succeed, otherwise attacks are less likely to get through due to the selection of safer actions during resampling (Doc 4, Page 7).
+   - Sampling multiple times enables better discrimination between normal (clean) and attack actions, allowing the blue team to strategically allocate auditing resources and catch more attacks (Doc 2, Page 7).       
+
+**Summary:** Compared to baseline trusted monitoring approaches, resampling protocols dramatically increase attack detection rates (from 33.2% caught attacks to over 70.6% at baseline resampling and up to 87.1% with advanced protocols) while maintaining high task usefulness (~95%). This demonstrates resampling's strong empirical advantage in controlling AI agent behavior against attacks.
+
+---
+
+### Question 3
+What limitations arise in detecting sophisticated multi-step attacks, and how do safety-usefulness trade-offs constrain the effectiveness of control protocols?
+
+**Skeptical Reviewer:**
+The detection of sophisticated multi-step attacks faces several limitations and challenges, particularly related to the nature of multi-step sequences and the trade-offs between safety and usefulness in control protocols:
+
+1. **Attack Decomposition and Subtlety**:
+   Attack policies can decompose malicious strategies into many smaller, less suspicious actions spread across multiple steps. This breaking up of an attack into subtle, incremental commands makes each individual action appear benign, thereby evading detection by relying on suspicion scores evaluated at the single-step level. As stated in [Doc 1, Page 1] and reiterated in [Doc 5, Page 22], the red (attacker) team can distribute malicious commands either within a single step or spread them across multiple steps, complicating efforts by the blue (defender) team to audit effectively.
+
+2. **Audit Budget Constraints**:
+   The blue team's auditing protocol is constrained by a limited auditing budget — for example, auditing only 1% of steps in the baseline distribution, according to [Doc 5, Page 22]. This low auditing rate means that many malicious steps may bypass inspection, especially if attackers strategically distribute their actions.
+
+3. **Trade-off Between Safety and Usefulness**:
+   Control protocols introduce a trade-off between safety (detecting and preventing attacks) and usefulness (allowing legitimate actions to proceed without undue interference). Protocols that increase safety by auditing more steps or deferring actions to trusted monitors can negatively impact usefulness. For instance, setting a lower "defer threshold" causes the trusted model to be consulted more frequently, enhancing safety but potentially decreasing system responsiveness or overall productivity, as described in [Doc 3, Page 29]. However, it is noted that usefulness does not degrade as sharply as might be expected, indicating a complex balance in practice.
+
+4. **Protocol Sensitivity and Effectiveness**:
+   Simple monitoring methods such as taking the maximum suspiciousness score of subactions to rate whole steps perform poorly against attacks that distribute commands cleverly, as highlighted on [Doc 5, Page 22]. More sophisticated protocols, including resampling methods and dynamic routing with trusted monitors, attempt to leverage the multi-step trajectory information but must carefully calibrate thresholds to maintain tractability and avoid excessive false positives ([Doc 3, Page 29], [Doc 2, Page 10]).
+
+In summary, these limitations arise because multi-step attacks exploit the sequential nature of tasks to mask malicious intent, while control protocols must negotiate a delicate balance between protecting against attacks and preserving legitimate operational effectiveness. These factors constrain the overall effectiveness of detection and control strategies.
+
+---
+
+### Question 4
+How does MELON use masked re-execution and tool-call comparison to detect indirect prompt injection attacks in LLM agents?
+
+**Methods Analyst:**
+MELON detects indirect prompt injection (IPI) attacks in LLM agents by leveraging two key mechanisms: masked re-execution and tool-call comparison.
+
+1. **Masked Re-execution**:
+MELON performs a re-execution of the agent's run while masking (modifying or withholding) parts of the user input to isolate the effect of potentially malicious inputs. This masked run aims to reveal differences in the agent's behavior when the suspected injection parts of the input are altered or removed, helping to detect if tool calls are influenced by malicious prompts rather than legitimate user tasks (Doc 1, p.9; Doc 5, p.5).
+
+2. **Tool-Call Comparison Between Original and Masked Runs**:
+MELON compares the sequence of tool calls made during the original run against those made in the masked re-execution. The central hypothesis is that in successful IPI attacks, tool calls become less dependent on the genuine user input and more influenced by the injected prompt. If the tool calls differ significantly—particularly if the masking run triggers tool calls that the original run does not—this signals an attack. This comparison is not just any difference but focuses on correlated tool calls related to the malicious attacker task (Doc 1, p.9; Doc 5, p.5).
+
+3. **Rationale and Utility Preservation**:
+By comparing tool calls specifically, MELON avoids false positives that may occur if the system flagged any tool call in the masked run as an attack. Many injected tasks fail to redirect the LLM sufficiently to influence the original tool calls, so only marking cases where the tool call behavior changes between runs effectively identifies successful attacks while maintaining high utility and minimizing interruptions to benign executions (Doc 5, p.5).
+
+In summary, MELON's detection algorithm uses masked re-execution to isolate malicious prompt effects and then compares the sequences of tool calls between original and masked runs to identify the fundamental behavioral pattern of IPI attacks—namely, the independence of malicious tool calls from user inputs. This method achieves a strong balance of security and utility in LLM-based agent systems (Doc 1, p.9; Doc 2, p.2; Doc 5, p.5).
+
+---
+
+### Question 5
+How does MELON (and MELON-Aug) perform in terms of attack success rate reduction and utility preservation compared to prior defenses?
+
+**Results Extractor:**
+MELON and MELON-Aug show significant improvements in both attack success rate (ASR) reduction and utility preservation (UA) compared to prior defenses:
+
+1. **Attack Success Rate (ASR) Reduction:**
+   - MELON and MELON-Aug consistently achieve the lowest ASR across multiple large language models (LLMs) and attacks.
+   - For GPT-4o, MELON-Aug achieves an ASR as low as 0.32%, substantially lower than the no defense baseline ASR of 16.06% (Doc 1, Page 7; Doc 4, Page 2).
+   - This shows a drastic reduction in attack success compared to no defense.
+   - Other defenses like the DeBERTa detector have much higher ASRs (e.g., 12.08% or more), and the LLM detector achieves 0.00% utility, indicating poor balance (Doc 1, Page 7; Doc 3, Page 8).
+
+2. **Utility Preservation (UA):**
+   - MELON-Aug maintains high utility under attack, achieving 68.72% UA on GPT-4o, very close to the no defense baseline of 69.08% (Doc 1, Page 7; Doc 4, Page 2).
+   - In contrast, detection-based methods like the LLM detector have 0.00% UA, indicating they terminate agent execution too aggressively, harming usability (Doc 3, Page 8).
+   - Prompt augmentation methods improve UA slightly but do not reduce ASR as effectively.
+   - MELON operates after action generation but before execution, allowing it to better preserve UA while reducing ASR (Doc 2, Page 7).
+
+3. **Overall Performance:**
+   - MELON-Aug achieves an optimal balance, significantly outperforming five state-of-the-art defenses on four SOTA attacks with the lowest ASR and maintained UA (Doc 4, Page 2).
+   - Ablations show that each MELON design component is essential to maintaining its low ASR and high UA (Doc 3, Page 8).
+
+**Summary:**
+- MELON-Aug reduces ASR to around 0.32% while preserving ~68.72% UA on GPT-4o.
+- Baselines without defense have ~16.06% ASR and ~69.08% UA.
+- Other detectors either have high ASR or very low UA (e.g., LLM detector 0% UA).
+- Thus, MELON and MELON-Aug provide a superior trade-off between attack prevention and utility, outperforming prior defense methods (Doc 1 Page 7; Doc 2 Page 7; Doc 3 Page 8; Doc 4 Page 2).
+
+---
+
+### Question 6
+What challenges remain for MELON in handling false positives, false negatives, and dependence on assumptions about agent behavior?
+
+**Skeptical Reviewer:**
+The MELON system faces several notable challenges related to false positives, false negatives, and its underlying assumptions about agent behavior:
+
+1. **False Positives**:
+   - MELON exhibits a false positive rate (FPR) of around 9.28% (Doc 2, p.9), which, while significantly lower than some baselines like the DeBERTa detector (61.86%), is not negligible.
+   - Some false positives arise in scenarios where the user explicitly requests potentially risky actions, such as blindly following instructions from external sources (Doc 1, p.18; Doc 5, p.18). Although these actions align with user intent, MELON flags them due to inherent security concerns.
+   - These "false positives" may reflect real security vulnerabilities rather than outright detection errors, making it a challenge to distinguish between false alarms and legitimate risks (Doc 1, p.18).
+
+2. **False Negatives**:
+   - MELON misses certain attacks mostly in cases where the attack is response-based (72.73% of failures) rather than through tool calls, because MELON only monitors tool calls, not the text responses generated by the agent (Doc 4, p.9).
+   - Tool call redundancy (around 15.15% of failure cases) also contributes to detection failures. When partial malicious results already exist in the observed outputs, the masking run might issue repeated tool calls, disrupting MELON's detection matching mechanism (Doc 4, p.9).
+   - These false negatives highlight incomplete coverage of attack vectors and suggest vulnerability to sophisticated indirect prompt injections that do not rely solely on tool execution commands.
+
+3. **Dependence on Assumptions About Agent Behavior**:
+   - MELON's detection relies on assumptions such as monitoring tool call outputs after the language model generates an action but before execution (Doc 3, p.7). This design helps preserve operational utility but may introduce blind spots.
+   - The masking and matching approach depends on consistent tool call patterns, and any discrepancies (e.g., redundancy or non-tool-based attacks) can undermine these assumptions (Doc 4, p.9).
+   - The agent behavior model does not currently integrate defenses against text-based or image-based adversarial inputs, limiting MELON's robustness against future attack vectors (Doc 5, p.18).
+   - Furthermore, there is an implicit assumption that the language model's action generation and the subsequent tool call usage patterns are sufficiently stable for MELON's comparison approach to be effective. Variability in agent design or dynamic context might reduce detection reliability.
+
+In summary, MELON's key challenges include balancing security and utility without excessive false positives, expanding coverage to detect attacks via textual responses rather than only tool calls, and ensuring its assumptions about agent behavior hold true under evolving and complex usage or attack patterns. These challenges represent meaningful limitations to its current effectiveness and suggest directions for future research and improvement (Docs 1, 2, 3, 4, and 5).
+
+---
+
+### Question 7
+How does the Prompt Infection attack achieve self-replication and propagation across agents within a multi-agent system?
+
+**Methods Analyst:**
+The Prompt Infection attack achieves self-replication and propagation across agents in a multi-agent system through a mechanism where the infection prompt is transmitted sequentially from one agent to the next. Initially, a malicious prompt is injected into an external content source (e.g., PDF, email, or web page) and processed by the first agent, causing it to become compromised (infected). This agent then modifies or appends information to a shared data note carried within the infection prompt and propagates the infected prompt downstream to other agents in the system (Doc 2, p. 3).
+
+Self-Replication is a core component of Prompt Infection that ensures the continuous transmission of the infection prompt throughout the agent network, maintaining the spread of the attack (Doc 1, p. 3; Doc 3, p. 3). This process forces subsequent agents to disregard their original roles and instead repeatedly execute the infection's payload, effectively locking the agents in a recursive loop. The system collapses from a series of unique functions executed by individual agents to a recursive single function governed by the infection prompt, centralizing control and enabling persistent replication (Doc 3, p. 3).
+
+Thus, by embedding self-replication instructions in the prompt and using shared data that agents modify and forward, the infection autonomously spreads across the multi-agent system, compromising each agent in turn (Doc 1, p. 3; Doc 2, p. 3; Doc 3, p. 3).
+
+---
+
+### Question 8
+What do experiments show about the effectiveness and spread dynamics of prompt infection attacks across different agent communication settings?
+
+**Results Extractor:**
+The experiments demonstrate several key findings about the effectiveness and spread dynamics of prompt infection attacks across different agent communication settings:
+
+1. **Infection Spread in Dynamic Agent Networks** (Doc 1, Page 7):
+- In a decentralized, non-linear society of agents with evolving interactions, the infection prompt spreads naturally from one initially infected agent.
+- For smaller populations, full infection is achieved rapidly: by turn 4.7 for 10 agents (about 47% infected per turn) and by turn 6.3 for 20 agents (~31.5% per turn).
+- In larger populations (30, 40, 50 agents), the infection spread takes proportionally longer, indicating that population size impacts the spread rate.
+
+2. **Comparison of Self-Replicating vs Non-Replicating Infection** (Doc 4, Page 6):
+- For data theft scenarios requiring agent cooperation, Non-Replicating prompt infection outperforms Self-Replicating infection by about 8.48% as the number of agents increases.
+- Self-Replicating infection is more effective for fewer agents (e.g., with three agents).
+- The complexity of self-replication adds overhead that hinders efficiency in larger, cooperative data theft tasks.
+
+3. **Impact of Communication Modes - Local vs Global Messaging** (Doc 4, Page 6):
+- Self-Replicating infection success rate is about 20% lower in local messaging compared to global messaging.
+- This difference arises because local messaging requires every agent to be compromised for infection to succeed, while global messaging allows infection to spread through a shared message history.
+- Non-Replicating infection shows a noticeable contrast but details are less explicit.
+
+**Summary:**
+- Prompt infection spreads rapidly in dynamic agent networks, achieving full infection within a few interaction turns in smaller populations.
+- Non-Replicating prompt infection is more efficient than Self-Replicating in cooperative, multi-agent data theft scenarios, especially as agent number grows.
+- Infection effectiveness is higher in global messaging settings due to shared message histories, whereas local messaging limits spread unless all agents are compromised.
+
+These results highlight that the structure of agent communication and the type of prompt infection strategy significantly influence the infection attack's success and speed of propagation.
+
+(Sources: Doc 1 p.7, Doc 4 p.6)
+
+---
+
+### Question 9
+What weaknesses exist in current defenses like LLM Tagging, and why are multi-agent systems still vulnerable to cascading prompt injection attacks?
+
+**Skeptical Reviewer:**
+Current defenses like LLM Tagging exhibit several notable weaknesses that contribute to the ongoing vulnerability of multi-agent systems (MAS) to cascading prompt injection attacks:
+
+1. **Bypass by Algorithmically Generated Prompts**:
+   The defense using LLM Tagging relies on handcrafted attack prompts. However, recent research (Liu et al., 2024a; Mehrotra et al., 2024) has demonstrated that algorithmically generated prompts can successfully bypass such manual tagging defenses. This highlights that LLM Tagging may not be resilient against adaptive or more sophisticated attack strategies that evolve beyond handcrafted injection attempts (Doc 2, Page 10).     
+
+2. **Exposure of Attack Prompts in MAS Leading to Detection Opportunities but also Stealth Needs**:
+   In multi-agent systems, attack prompts often become exposed within inter-agent communication channels. While this exposure provides opportunities for detection, it simultaneously underscores a significant challenge — attackers can develop stealthier infection methods to evade manual or automated reviews. This suggests the current defenses do not fully account for the stealth and subtlety possible in cascading infections within MAS (Doc 2, Page 10).
+
+3. **Internal Source of Threats within MAS Architecture**:
+   Unlike traditional LLM deployments, MAS inherently enable agents to communicate and potentially manipulate each other's prompts. Thus, the threat arises not only from external inputs but internally as agents can attack and compromise one another. This distributed and interactive architecture amplifies the risk of prompt injection propagating through multiple agents, causing cascading infections that are harder to contain with localized defensive measures like LLM Tagging (Doc 1, Page 2; Doc 3, Page 10).
+
+4. **Limited Scope of Evaluations and Defenses**:
+   The research has primarily focused on relatively basic multi-agent architectures and the GPT family of models, while other models like Claude, Llama, and Gemini are underexplored. This limits the generalizability and robustness of the defense mechanisms across diverse agent setups and LLM implementations, potentially leaving gaps in scenarios not yet fully tested (Doc 2, Page 10).
+
+In summary, while LLM Tagging improves defense by marking agent output origins, it remains vulnerable to more advanced, automated injection strategies and does not fully address the internal, multi-stage infection dynamics intrinsic to MAS. The complex interplay and communication of agents in MAS make cascading prompt injection a persistent and difficult threat to mitigate with current measures.
