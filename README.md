@@ -10,7 +10,6 @@ pip install -r requirements.txt
 ```
 
 2. Configure environment:
-   - Copy `.env.example` to `.env`
    - Add your OpenRouter proxy URL to `.env`:
    ```
    OPENROUTER_BASE_URL=your_proxy_url_here
@@ -48,7 +47,6 @@ Ask questions about the research papers. Type `quit` or `exit` to stop.
 ├── query.py            # Interactive query system
 ├── requirements.txt    # Python dependencies
 ├── .env                # Environment variables (create from .env.example)
-├── .env.example        # Example environment configuration
 ├── faiss_index/        # Vector store (created after indexing)
 └── resources/          # PDF documents
     ├── [PDF_FILE_1]
@@ -69,9 +67,9 @@ The system uses a router pattern with five agents:
 ## Research Papers
 
 ### Files
-1. 2504.10374v1.pdf
-2. 2410.07283v1.pdf
-3. 8180_MELON_Provable_Defense_Ag.pdf
+1. Ctrl-Z Controlling AI Agents via Resampling.pdf
+2. MELON Provable Defense Against Indirect Prompt Injection.pdf
+3. PROMPT INFECTION LLM-TO-LLM PROMPT INJECTION.pdf
 
 ## Questions and Answers
 
